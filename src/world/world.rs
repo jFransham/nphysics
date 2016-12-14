@@ -21,14 +21,48 @@ use resolution::{Solver, AccumulatedImpulseSolver, CorrectionMode};
 use object::{WorldObject, RigidBody, RigidBodyHandle, Sensor, SensorHandle};
 use math::{Point, Vector, Matrix};
 
+/// An Id for a RigidBody - a handle that is safe to pass between threads but
+/// can only be redeemed in the presence of a World.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RigidBodyId(usize);
+
+impl From<RigidBodyId> for usize {
+    fn from(id: RigidBodyId) -> Self {
+        id.0
+    }
+}
+
+impl From<usize> for RigidBodyId {
+    fn from(id: usize) -> Self {
+        RigidBodyId(id)
+    }
+}
+
+/// An Id for a Sensor - a handle that is safe to pass between threads but
+/// can only be redeemed in the presence of a World.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SensorId(usize);
+
+impl From<SensorId> for usize {
+    fn from(id: SensorId) -> Self {
+        id.0
+    }
+}
+
+impl From<usize> for SensorId {
+    fn from(id: usize) -> Self {
+        SensorId(id)
+    }
+}
+
 /// The default broad phase.
 pub type WorldBroadPhase<N> = DBVTBroadPhase<Point<N>, WorldObject<N>, AABB<Point<N>>>;
 
 /// An iterator visiting rigid bodies.
-pub type RigidBodies<'a, N> = Map<Iter<'a, Entry<usize, RigidBodyHandle<N>>>, fn(&'a Entry<usize, RigidBodyHandle<N>>) -> &'a RigidBodyHandle<N>>;
+pub type RigidBodies<'a, N> = Map<Iter<'a, Entry<RigidBodyId, RigidBodyHandle<N>>>, fn(&'a Entry<RigidBodyId, RigidBodyHandle<N>>) -> &'a RigidBodyHandle<N>>;
 
 /// An iterator visiting sensors.
-pub type Sensors<'a, N> = Map<Iter<'a, Entry<usize, SensorHandle<N>>>, fn(&'a Entry<usize, SensorHandle<N>>) -> &'a SensorHandle<N>>;
+pub type Sensors<'a, N> = Map<Iter<'a, Entry<SensorId, SensorHandle<N>>>, fn(&'a Entry<SensorId, SensorHandle<N>>) -> &'a SensorHandle<N>>;
 
 /// Type of the collision world containing rigid bodies.
 pub type RigidBodyCollisionWorld<N> = CollisionWorld<Point<N>, Matrix<N>, WorldObject<N>>;
@@ -42,8 +76,8 @@ pub type WorldCollisionObject<N> = CollisionObject<Point<N>, Matrix<N>, WorldObj
 /// This is the main structure of the physics engine.
 pub struct World<N: Scalar> {
     cworld:       RigidBodyCollisionWorld<N>,
-    rigid_bodies: HashMap<usize, RigidBodyHandle<N>, UintTWHash>,
-    sensors:      HashMap<usize, SensorHandle<N>, UintTWHash>,
+    rigid_bodies: HashMap<RigidBodyId, RigidBodyHandle<N>, UintTWHash>,
+    sensors:      HashMap<SensorId, SensorHandle<N>, UintTWHash>,
     forces:       BodyForceGenerator<N>,
     integrator:   BodySmpEulerIntegrator,
     sleep:        Rc<RefCell<ActivationManager<N>>>, // FIXME: avoid sharing (needed for the contact signal handler)
@@ -122,6 +156,22 @@ impl<N: Scalar> World<N> {
         }
     }
 
+    /// Given a RigidBodyId, return a proper handle
+    pub fn get_rigid_body_by_uid(
+        &self,
+        uid: &RigidBodyId
+    ) -> Option<&RigidBodyHandle<N>> {
+        self.rigid_bodies.find(uid)
+    }
+
+    /// Given a SensorId, return a proper handle
+    pub fn get_sensor_by_uid(
+        &self,
+        uid: &SensorId
+    ) -> Option<&SensorHandle<N>> {
+        self.sensors.find(uid)
+    }
+
     /// Updates the physics world.
     pub fn step(&mut self, dt: N) {
         for e in self.rigid_bodies.elements_mut().iter_mut() {
@@ -130,7 +180,10 @@ impl<N: Scalar> World<N> {
             if rb.is_active() {
                 self.forces.update(dt.clone(), &mut *rb);
                 self.integrator.update(dt.clone(), &mut *rb);
-                self.cworld.deferred_set_position(WorldObject::rigid_body_uid(&e.value), rb.position().clone());
+                self.cworld.deferred_set_position(
+                    WorldObject::rigid_body_uid(&e.value).into(),
+                    rb.position().clone()
+                );
             }
         }
 
@@ -139,7 +192,10 @@ impl<N: Scalar> World<N> {
 
             if let Some(rb) = sensor.parent() {
                 if rb.borrow().is_active() {
-                    self.cworld.deferred_set_position(WorldObject::sensor_uid(&e.value), sensor.position());
+                    self.cworld.deferred_set_position(
+                        WorldObject::sensor_uid(&e.value).into(),
+                        sensor.position()
+                    );
                 }
             }
         }
@@ -187,7 +243,7 @@ impl<N: Scalar> World<N> {
         let uid = WorldObject::rigid_body_uid(&handle);
 
         self.rigid_bodies.insert(uid, handle.clone());
-        self.cworld.deferred_add(uid, position, shape, groups,
+        self.cworld.deferred_add(uid.into(), position, shape, groups,
                                  GeometricQueryType::Contacts(collision_object_prediction),
                                  WorldObject::RigidBody(handle.clone()));
         self.cworld.perform_additions_removals_and_broad_phase();
@@ -202,10 +258,10 @@ impl<N: Scalar> World<N> {
         let groups   = sensor.collision_groups().as_collision_groups().clone();
         let margin   = sensor.margin();
         let handle   = Rc::new(RefCell::new(sensor));
-        let uid      = &*handle as *const RefCell<Sensor<N>> as usize;
+        let uid      = WorldObject::sensor_uid(&handle);
 
         self.sensors.insert(uid, handle.clone());
-        self.cworld.deferred_add(uid, position, shape, groups,
+        self.cworld.deferred_add(uid.into(), position, shape, groups,
                                  GeometricQueryType::Proximity(margin),
                                  WorldObject::Sensor(handle.clone()));
         self.cworld.perform_additions_removals_and_broad_phase();
@@ -216,7 +272,7 @@ impl<N: Scalar> World<N> {
     /// Remove a rigid body from the physics world.
     pub fn remove_rigid_body(&mut self, rb: &RigidBodyHandle<N>) {
         let uid = WorldObject::rigid_body_uid(rb);
-        self.cworld.deferred_remove(uid);
+        self.cworld.deferred_remove(uid.into());
         self.cworld.perform_additions_removals_and_broad_phase();
         self.joints.remove(rb, &mut *self.sleep.borrow_mut());
         self.ccd.remove_ccd_from(rb);
@@ -227,7 +283,7 @@ impl<N: Scalar> World<N> {
     /// Remove a sensor from the physics world.
     pub fn remove_sensor(&mut self, sensor: &SensorHandle<N>) {
         let uid = WorldObject::sensor_uid(sensor);
-        self.cworld.deferred_remove(uid);
+        self.cworld.deferred_remove(uid.into());
         self.cworld.perform_additions_removals_and_broad_phase();
         self.sensors.remove(&uid);
     }
@@ -343,7 +399,7 @@ impl<N: Scalar> World<N> {
 
     /// An iterator visiting all rigid bodies on this world.
     pub fn rigid_bodies(&self) -> RigidBodies<N> {
-        fn extract_value<N: Scalar>(e: &Entry<usize, RigidBodyHandle<N>>) -> &RigidBodyHandle<N> {
+        fn extract_value<N: Scalar>(e: &Entry<RigidBodyId, RigidBodyHandle<N>>) -> &RigidBodyHandle<N> {
             &e.value
         }
 
@@ -353,7 +409,7 @@ impl<N: Scalar> World<N> {
 
     /// An iterator visiting all sensors on this world.
     pub fn sensors(&self) -> Sensors<N> {
-        fn extract_value<N: Scalar>(e: &Entry<usize, SensorHandle<N>>) -> &SensorHandle<N> {
+        fn extract_value<N: Scalar>(e: &Entry<SensorId, SensorHandle<N>>) -> &SensorHandle<N> {
             &e.value
         }
 

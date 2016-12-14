@@ -6,6 +6,7 @@ use rand::{SeedableRng, XorShiftRng, Rng};
 use sfml::graphics::RenderWindow;
 use na::{Point2, Point3, Isometry2};
 use na;
+use nphysics2d::world::{RigidBodyId, SensorId};
 use nphysics2d::object::{WorldObject, RigidBodyHandle, SensorHandle};
 use ncollide::transformation;
 use ncollide::shape::{Shape2, Plane2, Ball2, Cuboid2, Compound2, Polyline2, ConvexHull2, Segment2};
@@ -44,8 +45,15 @@ impl<'a> GraphicsManager<'a> {
         };
 
         match object {
-            WorldObject::RigidBody(ref rb) => { self.rb2sn.insert(WorldObject::rigid_body_uid(rb), nodes); },
-            WorldObject::Sensor(ref s)     => { self.s2sn.insert(WorldObject::sensor_uid(s), nodes); }
+            WorldObject::RigidBody(ref rb) => {
+                self.rb2sn.insert(
+                    WorldObject::rigid_body_uid(rb).into(),
+                    nodes
+                );
+            },
+            WorldObject::Sensor(ref s) => {
+                self.s2sn.insert(WorldObject::sensor_uid(s).into(), nodes);
+            },
         }
     }
 
@@ -214,11 +222,11 @@ impl<'a> GraphicsManager<'a> {
     }
 
     pub fn set_rigid_body_color(&mut self, object: &RigidBodyHandle<f32>, color: Point3<f32>) {
-        self.set_color(WorldObject::rigid_body_uid(object), color)
+        self.set_color(WorldObject::rigid_body_uid(object).into(), color)
     }
 
     pub fn set_sensor_color(&mut self, sensor: &SensorHandle<f32>, color: Point3<f32>) {
-        self.set_color(WorldObject::sensor_uid(sensor), color)
+        self.set_color(WorldObject::sensor_uid(sensor).into(), color)
     }
 
     pub fn color_for_object(&mut self, object: &WorldObject<f32>) -> Point3<u8> {
@@ -235,7 +243,9 @@ impl<'a> GraphicsManager<'a> {
 
         if let WorldObject::Sensor(ref s) = *object {
             if let Some(parent) = s.borrow().parent() {
-                if let Some(pcolor) = self.obj2color.get(&WorldObject::rigid_body_uid(parent)) {
+                if let Some(pcolor) = self.obj2color.get(
+                    &WorldObject::rigid_body_uid(parent).into()
+                ) {
                     color = *pcolor;
                 }
             }
@@ -248,10 +258,10 @@ impl<'a> GraphicsManager<'a> {
     }
 
     pub fn rigid_body_to_scene_node(&mut self, rb: &RigidBodyHandle<f32>) -> Option<&mut Vec<SceneNode<'a>>> {
-        self.rb2sn.get_mut(&WorldObject::rigid_body_uid(rb))
+        self.rb2sn.get_mut(&WorldObject::rigid_body_uid(rb).into())
     }
 
     pub fn sensor_to_scene_node(&mut self, sensor: &SensorHandle<f32>) -> Option<&mut Vec<SceneNode<'a>>> {
-        self.s2sn.get_mut(&WorldObject::sensor_uid(sensor))
+        self.s2sn.get_mut(&WorldObject::sensor_uid(sensor).into())
     }
 }

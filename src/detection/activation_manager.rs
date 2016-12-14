@@ -61,10 +61,16 @@ impl<N: Scalar> ActivationManager<N> {
     }
 
     /// Update the activation manager, activating and deactivating objects when needed.
-    pub fn update(&mut self,
-                  world:  &mut RigidBodyCollisionWorld<N>,
-                  joints: &JointManager<N>,
-                  bodies: &HashMap<usize, RigidBodyHandle<N>, UintTWHash>) {
+    pub fn update(
+        &mut self,
+        world:  &mut RigidBodyCollisionWorld<N>,
+        joints: &JointManager<N>,
+        bodies: &HashMap<
+            ::world::RigidBodyId,
+            RigidBodyHandle<N>,
+            UintTWHash
+        >,
+    ) {
         /*
          *
          * Update bodies energy

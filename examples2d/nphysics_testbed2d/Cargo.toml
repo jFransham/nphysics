@@ -9,10 +9,12 @@ name = "nphysics_testbed2d"
 [dependencies.nphysics2d]
 path = "../../build/nphysics2d"
 
+[dependencies.ncollide]
+path = "../../ncollide"
+
 [dependencies]
 sfml = "0.11.*"
 nalgebra = "0.9.*"
 time = "*"
 num = "*"
 rand = "*"
-ncollide = "*"

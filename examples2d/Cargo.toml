@@ -7,13 +7,15 @@ authors = [ "Sébastien Crozet <developer@crozet.re>" ]
 num = "0.1.*"
 rand = "*"
 nalgebra = "0.9.*"
-ncollide = "0.10.*"
 
 [dependencies.nphysics_testbed2d]
 path = "./nphysics_testbed2d"
 
 [dependencies.nphysics2d]
 path = "../build/nphysics2d"
+
+[dependencies.ncollide]
+path = "../ncollide"
 
 [[bin]]
 name = "ball_vee"

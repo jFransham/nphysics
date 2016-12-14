@@ -34,16 +34,16 @@ impl<N: Scalar> WorldObject<N> {
     ///
     /// This identifier remains unique and will not change as long as `rb` is kept alive in memory.
     #[inline]
-    pub fn rigid_body_uid(rb: &RigidBodyHandle<N>) -> usize {
-        &**rb as *const RefCell<RigidBody<N>> as usize
+    pub fn rigid_body_uid(rb: &RigidBodyHandle<N>) -> ::world::RigidBodyId {
+        (&**rb as *const RefCell<RigidBody<N>> as usize).into()
     }
 
     /// The unique identifier a sensor would have if it was wrapped on a `WorldObject`.
     ///
     /// This identifier remains unique and will not change as long as `s` is kept alive in memory.
     #[inline]
-    pub fn sensor_uid(s: &SensorHandle<N>) -> usize {
-        &**s  as *const RefCell<Sensor<N>> as usize
+    pub fn sensor_uid(s: &SensorHandle<N>) -> ::world::SensorId {
+        (&**s  as *const RefCell<Sensor<N>> as usize).into()
     }
 
     /// Whether or not this is a rigid body.
@@ -86,8 +86,10 @@ impl<N: Scalar> WorldObject<N> {
     #[inline]
     pub fn uid(&self) -> usize {
         match *self {
-            WorldObject::RigidBody(ref rb) => WorldObject::rigid_body_uid(rb),
-            WorldObject::Sensor(ref s)     => WorldObject::sensor_uid(s)
+            WorldObject::RigidBody(ref rb) =>
+                WorldObject::rigid_body_uid(rb).into(),
+            WorldObject::Sensor(ref s)     =>
+                WorldObject::sensor_uid(s).into(),
         }
     }
 
